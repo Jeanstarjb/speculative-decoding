@@ -9,3 +9,5 @@ The increasing computational cost and latency of language model inference hinder
 The solution leverages SpecVocab, an advanced speculative decoding method, to optimize language model inference by dynamically selecting vocabulary subsets per decoding step. The architecture includes a draft model for speculative decoding, a target language model, and a SpecVocab module for efficient vocabulary management. The tech stack includes Python, PyTorch for ML model implementation, FastAPI for backend APIs, Redis for caching, Docker for containerization, and Kubernetes for orchestration.
 
 ## Progress Log
+
+- **Completed Task:** Set up the project repository with basic folder structure, README, and environment configuration files (e.g., requirements.txt, .gitignore, Dockerfile).
