@@ -1,9 +1,4 @@
-# Model architecture definitions
-
-class DraftModel:
-    """Lightweight draft model for speculative decoding"""
-    pass
-
+from .draft_model import DraftModel
 
 class TargetModel:
     """Main language model for final inference"""
