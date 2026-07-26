@@ -13,3 +13,4 @@ The solution leverages SpecVocab, an advanced speculative decoding method, to op
 - **Completed Task:** Set up the project repository with basic folder structure, README, and environment configuration files (e.g., requirements.txt, .gitignore, Dockerfile).
 - **Completed Task:** Implement the draft model with a single decoder layer and an output embedding matrix.
 - **Completed Task:** Implement the draft model with a single decoder layer and an output embedding matrix.
+- **Completed Task:** Develop the SpecVocab module that dynamically selects a vocabulary subset per decoding step based on the proposed algorithm.
