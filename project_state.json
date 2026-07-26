@@ -33,7 +33,7 @@
     {
       "id": 6,
       "description": "Develop a benchmarking module to compare SpecVocab's performance against baseline speculative decoding methods like EAGLE-3.",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "id": 7,
