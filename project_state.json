@@ -38,7 +38,7 @@
     {
       "id": 7,
       "description": "Build a FastAPI-based backend to expose APIs for speculative decoding and inference tasks.",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "id": 8,
