@@ -23,7 +23,7 @@
     {
       "id": 4,
       "description": "Integrate the draft model and SpecVocab module to perform speculative decoding and ensure compatibility with the target language model.",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "id": 5,
