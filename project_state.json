@@ -18,7 +18,7 @@
     {
       "id": 3,
       "description": "Develop the SpecVocab module that dynamically selects a vocabulary subset per decoding step based on the proposed algorithm.",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "id": 4,
