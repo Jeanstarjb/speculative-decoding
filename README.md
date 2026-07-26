@@ -16,3 +16,4 @@ The solution leverages SpecVocab, an advanced speculative decoding method, to op
 - **Completed Task:** Develop the SpecVocab module that dynamically selects a vocabulary subset per decoding step based on the proposed algorithm.
 - **Completed Task:** Integrate the draft model and SpecVocab module to perform speculative decoding and ensure compatibility with the target language model.
 - **Completed Task:** Implement the target language model inference pipeline and ensure it can accept and process speculative decoding outputs.
+- **Completed Task:** Develop a benchmarking module to compare SpecVocab's performance against baseline speculative decoding methods like EAGLE-3.
