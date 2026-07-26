@@ -1,5 +1,5 @@
 import torch
-from typing import List
+from typing import List, Tuple
 from models import DraftModel, TargetModel
 from spec_vocab import SpecVocab
 
@@ -15,28 +15,32 @@ class SpeculativeDecoder:
         self.temperature = temperature
 
     def generate(self, input_ids: torch.Tensor) -> List[int]:
-        generated = input_ids[0].tolist()
+        """Generate sequence using speculative decoding pipeline"""
+        current_ids = input_ids.clone()
         for _ in range(self.max_length):
-            draft_logits = self.draft_model(input_ids)
-            draft_probs = torch.softmax(draft_logits[:, -1, :]/self.temperature, -1)
-            top_n = torch.topk(draft_probs, self.spec_vocab.top_n, -1).indices[0].tolist()
-            
-            candidates = self.spec_vocab.get_candidates(top_n)
-            target_logits = self.target_model(input_ids)
-            target_probs = torch.softmax(target_logits[:, -1, :]/self.temperature, -1)
-            
-            next_token = self._select_token(candidates, draft_probs, target_probs)
-            generated.append(next_token)
-            input_ids = torch.cat([input_ids, torch.tensor([[next_token]])], -1)
-            self.spec_vocab.update_frequencies([next_token])
-        return generated
+            # Generate draft candidates
+            with torch.no_grad():
+                draft_logits = self.draft_model(current_ids)
+                draft_probs = torch.softmax(draft_logits[:, -1, :] / self.temperature, dim=-1)
+                draft_tokens = torch.multinomial(draft_probs, num_samples=1)
 
-    def _select_token(self, candidates, draft_probs, target_probs):
-        best_token = candidates[0]
-        max_ratio = -1
-        for token in candidates:
-            ratio = target_probs[0, token].item() / (draft_probs[0, token].item() + 1e-8)
-            if ratio >= self.spec_vocab.threshold and ratio > max_ratio:
-                max_ratio = ratio
-                best_token = token
-        return best_token if max_ratio >= self.spec_vocab.threshold else target_probs.argmax(-1).item()
+            # Get target model verification
+            combined_ids = torch.cat([current_ids, draft_tokens], dim=1)
+            target_logits = self.target_model(combined_ids)
+            target_probs = torch.softmax(target_logits[:, -1, :] / self.temperature, dim=-1)
+
+            # Validate and accept tokens
+            accepted = draft_tokens
+            if not torch.all(torch.isclose(draft_probs, target_probs, atol=0.01)):
+                mismatch = torch.argmax(draft_probs != target_probs)
+                accepted = draft_tokens[:, :mismatch+1]
+
+            current_ids = torch.cat([current_ids, accepted], dim=1)
+            
+            # Update vocabulary frequencies
+            self.spec_vocab.update_frequencies(accepted.squeeze().tolist())
+
+            if accepted[0, -1] in [0, 1]:  # Stop tokens
+                break
+
+        return current_ids.squeeze().tolist()
