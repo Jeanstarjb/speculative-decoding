@@ -28,7 +28,7 @@
     {
       "id": 5,
       "description": "Implement the target language model inference pipeline and ensure it can accept and process speculative decoding outputs.",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "id": 6,
