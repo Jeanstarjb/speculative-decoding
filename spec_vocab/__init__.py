@@ -1,6 +1,7 @@
 import os
 import redis
 import torch
+from typing import List
 
 class SpecVocab:
     """Dynamic vocabulary management system for speculative decoding"""
@@ -20,23 +21,8 @@ class SpecVocab:
         for token_id in token_ids:
             self.redis_conn.zincrby("token_frequencies", 1, str(token_id))
 
-    def generate_candidates(self):
-        """Retrieve top-k most frequent tokens from Redis"""
-        candidates = self.redis_conn.zrevrange("token_frequencies", 0, self.top_k-1)
-        return [int(c) for c in candidates]
-
-    def validate_candidates(self, candidates, target_logits):
-        """Validate candidates against target model's predictions"""
-        probs = torch.softmax(target_logits, dim=-1)
-        top_probs, top_indices = torch.topk(probs, self.top_n)
-        top_indices = top_indices.tolist()
-        
-        valid = []
-        for candidate in candidates:
-            if candidate in top_indices and probs[candidate].item() >= self.threshold:
-                valid.append(candidate)
-        
-        if not valid:
-            valid.append(top_indices[0])
-        
-        return valid
+    def get_candidates(self, draft_top_n: List[int]) -> List[int]:
+        """Get combined candidate tokens from frequency cache and draft model"""
+        top_k_tokens = self.redis_conn.zrevrange("token_frequencies", 0, self.top_k-1)
+        combined = list(set([int(t) for t in top_k_tokens] + draft_top_n))
+        return combined[:self.top_k + self.top_n]
