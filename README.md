@@ -20,3 +20,4 @@ The solution leverages SpecVocab, an advanced speculative decoding method, to op
 - **Completed Task:** Build a FastAPI-based backend to expose APIs for speculative decoding and inference tasks.
 - **Completed Task:** Set up Redis caching to store intermediate results and reduce redundant computations during speculative decoding.
 - **Completed Task:** Design and implement unit tests for the draft model, SpecVocab module, and the integration pipeline.
+- **Completed Task:** Develop a monitoring and logging system to track throughput, latency, and acceptance rates of the speculative decoding process.
