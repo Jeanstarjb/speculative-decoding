@@ -18,3 +18,4 @@ The solution leverages SpecVocab, an advanced speculative decoding method, to op
 - **Completed Task:** Implement the target language model inference pipeline and ensure it can accept and process speculative decoding outputs.
 - **Completed Task:** Develop a benchmarking module to compare SpecVocab's performance against baseline speculative decoding methods like EAGLE-3.
 - **Completed Task:** Build a FastAPI-based backend to expose APIs for speculative decoding and inference tasks.
+- **Completed Task:** Set up Redis caching to store intermediate results and reduce redundant computations during speculative decoding.
