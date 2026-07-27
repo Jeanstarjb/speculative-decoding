@@ -58,7 +58,7 @@
     {
       "id": 11,
       "description": "Containerize the application using Docker and write Kubernetes manifests for deployment in a scalable environment.",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "id": 12,
