@@ -53,7 +53,7 @@
     {
       "id": 10,
       "description": "Develop a monitoring and logging system to track throughput, latency, and acceptance rates of the speculative decoding process.",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "id": 11,
