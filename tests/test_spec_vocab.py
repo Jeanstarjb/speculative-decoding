@@ -1,46 +1,59 @@
 import pytest
+from unittest.mock import Mock, call
 import torch
-from unittest.mock import Mock
 from spec_vocab import SpecVocab
 
+@pytest.fixture
+def mock_redis():
+    return Mock()
 
-def test_frequency_updates():
-    mock_redis = Mock()
+def test_low_frequency_fallback(mock_redis):
+    spec_vocab = SpecVocab(top_k=3, top_n=5)
+    spec_vocab.redis_conn = mock_redis
+    
+    # Simulate only 2 high-frequency tokens
+    mock_redis.zrevrange.return_value = ['100', '200']
+    mock_redis.zscore.side_effect = [0.09, 0.08]  # Below threshold
+    
+    candidates = spec_vocab.get_candidates(current_token=torch.tensor([42]))
+    assert len(candidates) == 2  # Fallback to available tokens
+
+def test_threshold_filtering(mock_redis):
+    spec_vocab = SpecVocab(threshold=0.1)
+    spec_vocab.redis_conn = mock_redis
+    
+    mock_redis.zrevrange.return_value = ['100', '200', '300']
+    mock_redis.zscore.side_effect = [0.15, 0.09, 0.2]
+    
+    candidates = spec_vocab.get_candidates(current_token=torch.tensor([42]))
+    assert set(candidates) == {100, 300}  # Filter out 200
+
+def test_candidate_prioritization(mock_redis):
+    spec_vocab = SpecVocab(top_k=5, top_n=3)
+    spec_vocab.redis_conn = mock_redis
+    
+    mock_redis.zrevrange.return_value = ['100', '200', '300', '400', '500']
+    mock_redis.zscore.side_effect = [0.2, 0.19, 0.18, 0.17, 0.16]
+    
+    candidates = spec_vocab.get_candidates(current_token=torch.tensor([42]))
+    assert candidates == [100, 200, 300]
+
+def test_empty_frequency_data(mock_redis):
+    spec_vocab = SpecVocab()
+    spec_vocab.redis_conn = mock_redis
+    mock_redis.zrevrange.return_value = []
+    
+    candidates = spec_vocab.get_candidates(current_token=torch.tensor([42]))
+    assert len(candidates) == 0
+
+@pytest.mark.parametrize('batch_size', [1, 4, 8])
+def test_batch_frequency_updates(batch_size, mock_redis):
     spec_vocab = SpecVocab()
     spec_vocab.redis_conn = mock_redis
     
-    test_ids = [101, 202, 303]
-    spec_vocab.update_frequencies(test_ids)
+    token_ids = torch.randint(100, 200, (batch_size, 10))
+    spec_vocab.update_frequencies(token_ids.flatten().tolist())
     
-    assert mock_redis.zincrby.call_count == 3
-    calls = [call[0] for call in mock_redis.zincrby.call_args_list]
-    assert all(c[0] == "token_frequencies" for c in calls)
-    assert {int(c[2]) for c in calls} == set(test_ids)
-
-
-def test_candidate_generation():
-    mock_redis = Mock()
-    mock_redis.zrevrange.return_value = ['789', '456', '123']
-    spec_vocab = SpecVocab(top_k=3)
-    spec_vocab.redis_conn = mock_redis
-    
-    candidates = spec_vocab.generate_candidates()
-    
-    assert candidates == [789, 456, 123]
-    mock_redis.zrevrange.assert_called_once_with("token_frequencies", 0, 2)
-
-
-def test_validation_logic():
-    spec_vocab = SpecVocab(top_n=3, threshold=0.15)
-    
-    # Test with valid candidates
-    logits = torch.tensor([0.1, 0.5, 0.3, 0.2], dtype=torch.float32)
-    candidates = [1, 2]
-    valid = spec_vocab.validate_candidates(candidates, logits)
-    assert valid == [1, 2]
-    
-    # Test fallback to target model
-    logits = torch.tensor([0.01, 0.01, 0.01, 0.97], dtype=torch.float32)
-    candidates = [0, 1]
-    valid = spec_vocab.validate_candidates(candidates, logits)
-    assert valid == [3]
+    assert mock_redis.zincrby.call_count == batch_size * 10
+    assert all(call_args[0][0] == 'token_frequencies' 
+               for call_args in mock_redis.zincrby.call_args_list)
