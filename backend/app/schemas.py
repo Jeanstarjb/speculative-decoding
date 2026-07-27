@@ -16,3 +16,8 @@ class BenchmarkResult(BaseModel):
     avg_tokens_sec: float
     total_time: float
     memory_usage: float
+
+class MonitoringMetrics(BaseModel):
+    throughput_tokens_per_sec: float
+    average_latency_per_step_sec: float
+    acceptance_rate: float
