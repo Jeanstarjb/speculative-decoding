@@ -21,3 +21,4 @@ The solution leverages SpecVocab, an advanced speculative decoding method, to op
 - **Completed Task:** Set up Redis caching to store intermediate results and reduce redundant computations during speculative decoding.
 - **Completed Task:** Design and implement unit tests for the draft model, SpecVocab module, and the integration pipeline.
 - **Completed Task:** Develop a monitoring and logging system to track throughput, latency, and acceptance rates of the speculative decoding process.
+- **Completed Task:** Containerize the application using Docker and write Kubernetes manifests for deployment in a scalable environment.
