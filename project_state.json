@@ -43,7 +43,7 @@
     {
       "id": 8,
       "description": "Set up Redis caching to store intermediate results and reduce redundant computations during speculative decoding.",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "id": 9,
