@@ -23,3 +23,4 @@ The solution leverages SpecVocab, an advanced speculative decoding method, to op
 - **Completed Task:** Develop a monitoring and logging system to track throughput, latency, and acceptance rates of the speculative decoding process.
 - **Completed Task:** Containerize the application using Docker and write Kubernetes manifests for deployment in a scalable environment.
 - **Completed Task:** Optimize the SpecVocab algorithm for different language model sizes and tasks to ensure generalizability.
+- **Completed Task:** Create a lightweight frontend interface to demonstrate the speculative decoding process and visualize performance metrics.
