@@ -63,7 +63,7 @@
     {
       "id": 12,
       "description": "Optimize the SpecVocab algorithm for different language model sizes and tasks to ensure generalizability.",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "id": 13,
