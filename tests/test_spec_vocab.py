@@ -1,59 +1,70 @@
 import pytest
-from unittest.mock import Mock, call
 import torch
-from spec_vocab import SpecVocab
+from backend.app.spec_vocab import SpecVocab, SpecVocabConfig
 
 @pytest.fixture
-def mock_redis():
-    return Mock()
+def sample_hidden_states():
+    torch.manual_seed(42)
+    return torch.randn(1, 128, 32000)  # (batch_size, seq_len, vocab_size)
 
-def test_low_frequency_fallback(mock_redis):
-    spec_vocab = SpecVocab(top_k=3, top_n=5)
-    spec_vocab.redis_conn = mock_redis
+@pytest.mark.parametrize('model_size,task_type,expected_range', [
+    ('small', 'translation', (512, 2048)),
+    ('large', 'summarization', (2048, 4096)),
+    ('medium', 'code_generation', (1024, 3072))
+])
+def test_adaptive_vocab_selection(sample_hidden_states, model_size, task_type, expected_range):
+    config = SpecVocabConfig(
+        size_adaptation_strategy='linear',
+        min_vocab_subset=512,
+        max_vocab_subset=4096
+    )
+    spec_vocab = SpecVocab(config)
     
-    # Simulate only 2 high-frequency tokens
-    mock_redis.zrevrange.return_value = ['100', '200']
-    mock_redis.zscore.side_effect = [0.09, 0.08]  # Below threshold
+    vocab = spec_vocab.get_adaptive_vocab(
+        sample_hidden_states,
+        current_layer=6,
+        model_size=model_size,
+        task_type=task_type
+    )
     
-    candidates = spec_vocab.get_candidates(current_token=torch.tensor([42]))
-    assert len(candidates) == 2  # Fallback to available tokens
+    assert expected_range[0] <= len(vocab) <= expected_range[1], \
+        f"Vocab size {len(vocab)} outside expected range {expected_range}"
 
-def test_threshold_filtering(mock_redis):
-    spec_vocab = SpecVocab(threshold=0.1)
-    spec_vocab.redis_conn = mock_redis
+@pytest.mark.parametrize('layer,depth_factor', [
+    (0, 1.0),
+    (6, 1.5),
+    (11, 1.9167)
+])
+def test_layer_wise_scaling(sample_hidden_states, layer, depth_factor):
+    config = SpecVocabConfig(layer_wise_scaling=True)
+    spec_vocab = SpecVocab(config)
+    threshold = spec_vocab._calculate_dynamic_threshold(
+        sample_hidden_states,
+        layer=layer,
+        scale_factor=1.0
+    )
     
-    mock_redis.zrevrange.return_value = ['100', '200', '300']
-    mock_redis.zscore.side_effect = [0.15, 0.09, 0.2]
-    
-    candidates = spec_vocab.get_candidates(current_token=torch.tensor([42]))
-    assert set(candidates) == {100, 300}  # Filter out 200
+    base_threshold = spec_vocab.config.adaptive_threshold
+    expected = base_threshold * depth_factor * (1 + 0.5)  # 0.5 mock entropy
+    assert pytest.approx(threshold, rel=0.1) == expected
 
-def test_candidate_prioritization(mock_redis):
-    spec_vocab = SpecVocab(top_k=5, top_n=3)
-    spec_vocab.redis_conn = mock_redis
+@pytest.mark.parametrize('strategy,model_size,expected', [
+    ('linear', 'small', 614),
+    ('exponential', 'large', 4096),
+    (None, 'medium', 2048)
+])
+def test_size_adaptation_strategies(sample_hidden_states, strategy, model_size, expected):
+    config = SpecVocabConfig(
+        size_adaptation_strategy=strategy,
+        size_adaptation_factors={'small': 0.6, 'medium': 1.0, 'large': 1.4},
+        min_vocab_subset=512,
+        max_vocab_subset=4096
+    )
+    spec_vocab = SpecVocab(config)
+    candidates = torch.arange(0, 1024)  # 1024 candidate tokens
+    adapted = spec_vocab._adapt_vocab_size(candidates, model_size)
     
-    mock_redis.zrevrange.return_value = ['100', '200', '300', '400', '500']
-    mock_redis.zscore.side_effect = [0.2, 0.19, 0.18, 0.17, 0.16]
-    
-    candidates = spec_vocab.get_candidates(current_token=torch.tensor([42]))
-    assert candidates == [100, 200, 300]
-
-def test_empty_frequency_data(mock_redis):
-    spec_vocab = SpecVocab()
-    spec_vocab.redis_conn = mock_redis
-    mock_redis.zrevrange.return_value = []
-    
-    candidates = spec_vocab.get_candidates(current_token=torch.tensor([42]))
-    assert len(candidates) == 0
-
-@pytest.mark.parametrize('batch_size', [1, 4, 8])
-def test_batch_frequency_updates(batch_size, mock_redis):
-    spec_vocab = SpecVocab()
-    spec_vocab.redis_conn = mock_redis
-    
-    token_ids = torch.randint(100, 200, (batch_size, 10))
-    spec_vocab.update_frequencies(token_ids.flatten().tolist())
-    
-    assert mock_redis.zincrby.call_count == batch_size * 10
-    assert all(call_args[0][0] == 'token_frequencies' 
-               for call_args in mock_redis.zincrby.call_args_list)
+    if strategy == 'exponential' and model_size == 'large':
+        assert len(adapted) == 4096  # Max cap
+    else:
+        assert len(adapted) == expected
