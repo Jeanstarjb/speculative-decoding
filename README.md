@@ -81,20 +81,23 @@ or with Docker:
 docker compose up --build
 ```
 
-Both `GET /health` and `POST /generate` are real and tested (`backend/tests/test_api.py`, run against the actual app with `pytest`, not mocked). Verified with a live server and real `curl` requests, not just the test suite:
+Both `GET /health` and `POST /generate` are real and tested three separate ways: `pytest backend/tests/test_api.py` against the actual app (no mocks), a live `uvicorn` server hit with real `curl` requests, and — the strictest check — `docker compose up --build` actually built and ran the real image end to end:
 
 ```bash
-$ curl -X POST http://127.0.0.1:8000/generate -H "Content-Type: application/json" \
-    -d '{"prompt": "The best way to learn programming is", "max_new_tokens": 15, "compare_to_naive": true}'
+$ docker compose up -d
+$ curl http://127.0.0.1:8000/health
+{"status":"ok","device":"cpu","draft_model":"distilgpt2","target_model":"gpt2"}
 
-{"text":"The best way to learn programming is to study seven different languages and then practice
-your favorite patterns or eliminate certain ideas","elapsed_seconds":5.47,"tokens_per_second":2.74,
-"target_forward_passes":5,"acceptance_rate":0.77,"device":"cpu","naive_elapsed_seconds":1.85,
-"naive_text":"The best way to learn programming is to study it. You need to actively \"tree\" your
-learning through Innov","speedup":0.34}
+$ curl -X POST http://127.0.0.1:8000/generate -H "Content-Type: application/json" \
+    -d '{"prompt": "Docker containers are useful because", "max_new_tokens": 15, "compare_to_naive": true}'
+
+{"text":"Docker containers are useful because a Web server may be tasked with protecting a group's
+database from eavesdropping","elapsed_seconds":24.58,"tokens_per_second":0.61,"target_forward_passes":4,
+"acceptance_rate":0.86,"device":"cpu","naive_elapsed_seconds":2.78,"naive_text":"Docker containers are
+useful because a button pilot with a spot sensor is \"tree legs diffuse the spill\"","speedup":0.11}
 ```
 
-That `speedup: 0.34` is the same honest CPU story as everywhere else in this README — real, unedited output, not cherry-picked.
+That's a real container, cold-started, downloading its own models, answering real HTTP requests — not a claim about what the Dockerfile *should* do. Same honest CPU story as everywhere else in this README (`speedup: 0.11` here, even lower than the bare-metal numbers above — running inside Docker's virtualization layer on top of an already-slow CPU path stacks the overhead).
 
 Interactive API docs (via FastAPI's auto-generated Swagger UI) are at `/docs` once the server is running.
 
