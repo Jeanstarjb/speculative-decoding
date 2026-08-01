@@ -1,28 +1,29 @@
-# Speculative Decoding, From Scratch
+# Speculative Decoding
 
-A correct, from-scratch implementation of speculative decoding ([Leviathan et al. 2023](https://arxiv.org/abs/2211.17192) / [Chen et al. 2023](https://arxiv.org/abs/2302.01318)), built to actually prove the technique works rather than just claim it.
+A from-scratch implementation of speculative decoding for LLM inference ([Leviathan et al., 2023](https://arxiv.org/abs/2211.17192); [Chen et al., 2023](https://arxiv.org/abs/2302.01318)), with a proof of correctness, an interactive demo, and a containerized API.
 
-## The story
+## Overview
 
-This repo started as an auto-generated scaffold: a lot of Docker/FastAPI/Kubernetes/Redis boilerplate around a core decoding algorithm that, on inspection, was fake — the accept/reject step (the entire point of speculative decoding) was stubbed out to always return the target model's top token, several files called methods that didn't exist on the classes they imported, and nothing had ever actually been run.
+Autoregressive language models generate one token per forward pass, which underuses accelerator hardware since each pass only predicts a single next token. Speculative decoding addresses this with two models:
 
-What's in `demo/` and `notebooks/` is a real rewrite of just the core algorithm: two real pretrained models, the actual accept/reject sampling math, working KV-caching, and a correctness test that proves it's right — not benchmarked-and-hoped, proven.
+- A small, fast **draft model** proposes several tokens ahead.
+- The large **target model** verifies all of them in a single forward pass and accepts or rejects each one using an exact probability ratio.
 
-## What's real here
+When verification accepts a proposed token, that's effectively "free" — the model got a token without paying for its own dedicated forward pass. The accept/reject rule is calibrated so the final output distribution is mathematically identical to sampling from the target model alone; correctness isn't traded away for speed.
 
-| Path | What it is |
-|---|---|
-| [`demo/speculative_decoding.py`](demo/speculative_decoding.py) | The actual implementation: `speculative_decode()` and a cached `naive_decode()` baseline |
-| [`demo/test_correctness.py`](demo/test_correctness.py) | Proof of correctness (see below) |
-| [`notebooks/speculative_decoding_kaggle.ipynb`](notebooks/speculative_decoding_kaggle.ipynb) | Same code, packaged to run standalone (Kaggle or local) — already contains real executed output |
-| [`app.py`](app.py) | Interactive Streamlit demo — type a prompt, see speculative vs. naive decoding side by side with real live stats |
-| [`backend/app/main.py`](backend/app/main.py) | A real FastAPI service wrapping the same core (see below) |
+## How it works
 
-Draft/target model pairs used throughout: `distilgpt2` → `gpt2` (light, ~200M total, the default) or `distilgpt2` → `gpt2-medium` (~440M total). Same tokenizer family in both cases, which speculative decoding requires.
+1. The draft model proposes *k* tokens autoregressively.
+2. The target model evaluates all *k* positions in one forward pass.
+3. Each token is accepted with probability `min(1, p_target / p_draft)`.
+4. On rejection, the next token is resampled from the residual distribution `max(0, p_target − p_draft)` (renormalized), and the rest of the draft's proposals are discarded.
+5. If every proposed token is accepted, one additional "bonus" token is sampled from the target model for free.
 
-## Correctness, proven not assumed
+Both models use `DynamicCache` for KV-caching; a rejected token rolls the cache back to the last accepted position via `.crop()` rather than recomputing from scratch.
 
-At near-zero temperature, both models become deterministic — always pick their own top token. In that regime speculative decoding is mathematically required to produce the *exact same token sequence* as plain greedy decoding from the target model alone. The test checks this with an exact tensor match:
+## Correctness
+
+At near-zero temperature, both models become deterministic. In that regime, speculative decoding is required to produce the exact same token sequence as plain greedy decoding from the target model — this is checked directly with an exact tensor comparison:
 
 ```bash
 python demo/test_correctness.py
@@ -33,42 +34,45 @@ EXACT MATCH: True
 PASS: speculative decoding reduces to target-model greedy decoding, as required.
 ```
 
-If that test doesn't pass, nothing below it should be trusted — this is what it means to actually verify an algorithm instead of eyeballing the output text.
-
-## Honest benchmark results (CPU)
+## Benchmark results
 
 ```bash
 python demo/speculative_decoding.py
 ```
 
-On CPU, with proper KV-caching on both the speculative and naive paths:
-
 | Metric | Value |
 |---|---|
-| Acceptance rate | 51–80% across runs |
-| Target-model forward passes | ~13–21, vs. 40–60 for naive |
-| **Speedup** | **0.52x – 0.75x (slower than naive)** |
+| Acceptance rate | 51–86% across runs |
+| Target-model forward passes | ~4–21, vs. 15–60 for naive decoding |
+| Speedup (CPU) | 0.11x – 0.75x |
 
-Speculative decoding is *slower* than plain generation on this hardware, and that's expected, not a bug — the technique's entire speed advantage comes from a GPU-specific fact: computing several sequence positions in one forward pass costs barely more than computing one, because a single-token forward pass leaves most of a GPU idle. A CPU has no such slack — computing 4 positions costs close to 4x, not ~1x — so the "verify several draft tokens at once" trick has nothing to exploit, while the draft model's extra sequential forward passes are pure added cost. Acceptance rate and forward-pass-count numbers above confirm the algorithm itself is doing exactly what it should; the hardware is just the wrong hardware for it to pay off.
+On CPU, speculative decoding is slower than plain generation, which is the expected result rather than a defect. The technique's speedup comes from a GPU-specific property: evaluating several sequence positions in one forward pass costs only marginally more than evaluating one, because a single-token forward pass leaves most of a GPU's parallel compute idle. A CPU has no equivalent slack — evaluating *k* positions costs close to *k* times as much, not ~1x — so batched verification has nothing to exploit, while the draft model's extra forward passes are pure overhead. The acceptance rate and reduced forward-pass count above show the algorithm behaving correctly; the result is a property of the hardware, not the implementation.
 
-The notebook auto-detects this: it runs the full 3-prompt × 100-token benchmark on a GPU, and automatically scales down to a smaller run on CPU so it still finishes in a reasonable time.
+`notebooks/speculative_decoding_kaggle.ipynb` runs the full benchmark on GPU when one is available, and automatically scales down on CPU.
 
-One more real data point, from the interactive demo using a smaller target model (`distilgpt2` → `gpt2`, both under the light model-pair option): **0.21x**, an even bigger CPU slowdown than the `gpt2-medium` pairing. That's consistent with the explanation above — with a smaller target model, the draft model's own per-round overhead is a *larger* fraction of the total cost, so the CPU penalty gets worse, not better, as the target model shrinks. The technique needs a target model expensive enough (and a GPU parallel enough) for verifying several tokens at once to actually be cheap.
+## Getting started
 
-## Interactive demo
+```bash
+python -m venv .venv
+.venv\Scripts\activate            # Windows
+pip install torch transformers    # CPU build: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+python demo/test_correctness.py
+python demo/speculative_decoding.py
+```
+
+Default model pair: `distilgpt2` (draft) → `gpt2` (target), ~200M parameters total. A larger `distilgpt2` → `gpt2-medium` pairing is also available. Both use the same tokenizer, which speculative decoding requires.
+
+### Interactive demo
 
 ```bash
 pip install streamlit
 streamlit run app.py
 ```
 
-Type a prompt, pick a model pair and settings in the sidebar, hit Generate. Shows speculative and naive output side by side with real timing, tokens/sec, target-model forward-pass count, and acceptance rate — and an honest, dynamic note about why the speedup number will look bad on CPU and should look good on GPU.
+Enter a prompt and compare speculative vs. naive decoding side by side, with live timing, throughput, forward-pass count, and acceptance rate.
 
-Defaults to the lighter `distilgpt2` → `gpt2` pairing (~200M params total) so it stays usable on free CPU-only hosting (e.g. Streamlit Community Cloud); the original `distilgpt2` → `gpt2-medium` pairing is available from the sidebar.
-
-## API (FastAPI + Docker)
-
-A real HTTP service wrapping the same proven core — no reimplementation, no Redis, no Kubernetes (deliberately: not needed to serve one model to one demo, would just be complexity for its own sake).
+### API
 
 ```bash
 pip install -r backend/requirements.txt
@@ -81,10 +85,7 @@ or with Docker:
 docker compose up --build
 ```
 
-Both `GET /health` and `POST /generate` are real and tested three separate ways: `pytest backend/tests/test_api.py` against the actual app (no mocks), a live `uvicorn` server hit with real `curl` requests, and — the strictest check — `docker compose up --build` actually built and ran the real image end to end:
-
 ```bash
-$ docker compose up -d
 $ curl http://127.0.0.1:8000/health
 {"status":"ok","device":"cpu","draft_model":"distilgpt2","target_model":"gpt2"}
 
@@ -97,25 +98,26 @@ database from eavesdropping","elapsed_seconds":24.58,"tokens_per_second":0.61,"t
 useful because a button pilot with a spot sensor is \"tree legs diffuse the spill\"","speedup":0.11}
 ```
 
-That's a real container, cold-started, downloading its own models, answering real HTTP requests — not a claim about what the Dockerfile *should* do. Same honest CPU story as everywhere else in this README (`speedup: 0.11` here, even lower than the bare-metal numbers above — running inside Docker's virtualization layer on top of an already-slow CPU path stacks the overhead).
+Interactive API docs (Swagger UI) are served at `/docs`. `backend/tests/test_api.py` covers the endpoints with `pytest`.
 
-Interactive API docs (via FastAPI's auto-generated Swagger UI) are at `/docs` once the server is running.
+## Project structure
 
-## Running it
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate            # Windows
-pip install torch transformers    # CPU build: pip install torch --index-url https://download.pytorch.org/whl/cpu
-
-python demo/test_correctness.py       # correctness proof (~1 min on CPU)
-python demo/speculative_decoding.py   # full benchmark + sample generation
+```
+demo/speculative_decoding.py    Core implementation: speculative_decode(), naive_decode()
+demo/test_correctness.py        Correctness proof (exact-match test)
+backend/app/main.py             FastAPI service wrapping the core implementation
+backend/tests/                  API tests
+app.py                          Streamlit interactive demo
+notebooks/                      Kaggle-ready notebook with real executed output
+Dockerfile, docker-compose.yml  Containerized deployment
 ```
 
-Or open `notebooks/speculative_decoding_kaggle.ipynb` directly — it already contains real executed CPU output, and will run the larger GPU-scale benchmark automatically if you run it somewhere with CUDA available.
+## Roadmap
 
-## What happened to the rest of the original scaffold
+- Verified GPU benchmark (theory and CPU results support a real speedup; not yet measured on GPU)
+- Dynamic vocabulary subsetting (restricting candidate tokens per step to reduce softmax cost) as an additional optimization on top of standard speculative decoding
 
-The original auto-generated scaffold also included `frontend/` (a React shell, superseded by the working Streamlit demo), `k8s/`, `benchmark/`, `configs/`, `clients/`, `load_test/`, and `spec_vocab/` directories, plus a top-level `tests/` that mocked out the very code it claimed to test. All of it was either non-functional (imports that didn't exist, a `run_benchmarks.py` that imported a `time` module it never actually imported) or made redundant by the real work above, so it's been removed rather than left to confuse anyone browsing the repo. `git log` has the full history if any of it is ever useful for reference.
+## References
 
-Deliberately still not implemented: the "SpecVocab" dynamic-vocabulary-subset idea from the original repo name (restricting the candidate vocabulary per step to cut softmax cost). That's a separate, legitimate optimization on top of standard speculative decoding — not yet built. What's implemented and tested here is correct, standard speculative decoding.
+- Leviathan et al., ["Fast Inference from Transformers via Speculative Decoding"](https://arxiv.org/abs/2211.17192) (2023)
+- Chen et al., ["Accelerating Large Language Model Decoding with Speculative Sampling"](https://arxiv.org/abs/2302.01318) (2023)
