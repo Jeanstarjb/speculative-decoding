@@ -15,6 +15,7 @@ What's in `demo/` and `notebooks/` is a real rewrite of just the core algorithm:
 | [`demo/speculative_decoding.py`](demo/speculative_decoding.py) | The actual implementation: `speculative_decode()` and a cached `naive_decode()` baseline |
 | [`demo/test_correctness.py`](demo/test_correctness.py) | Proof of correctness (see below) |
 | [`notebooks/speculative_decoding_kaggle.ipynb`](notebooks/speculative_decoding_kaggle.ipynb) | Same code, packaged to run standalone (Kaggle or local) — already contains real executed output |
+| [`app.py`](app.py) | Interactive Streamlit demo — type a prompt, see speculative vs. naive decoding side by side with real live stats |
 
 Draft model: `distilgpt2`. Target model: `gpt2-medium`. Same tokenizer family, which speculative decoding requires.
 
@@ -50,6 +51,19 @@ On CPU, with proper KV-caching on both the speculative and naive paths:
 Speculative decoding is *slower* than plain generation on this hardware, and that's expected, not a bug — the technique's entire speed advantage comes from a GPU-specific fact: computing several sequence positions in one forward pass costs barely more than computing one, because a single-token forward pass leaves most of a GPU idle. A CPU has no such slack — computing 4 positions costs close to 4x, not ~1x — so the "verify several draft tokens at once" trick has nothing to exploit, while the draft model's extra sequential forward passes are pure added cost. Acceptance rate and forward-pass-count numbers above confirm the algorithm itself is doing exactly what it should; the hardware is just the wrong hardware for it to pay off.
 
 The notebook auto-detects this: it runs the full 3-prompt × 100-token benchmark on a GPU, and automatically scales down to a smaller run on CPU so it still finishes in a reasonable time.
+
+One more real data point, from the interactive demo using a smaller target model (`distilgpt2` → `gpt2`, both under the light model-pair option): **0.21x**, an even bigger CPU slowdown than the `gpt2-medium` pairing. That's consistent with the explanation above — with a smaller target model, the draft model's own per-round overhead is a *larger* fraction of the total cost, so the CPU penalty gets worse, not better, as the target model shrinks. The technique needs a target model expensive enough (and a GPU parallel enough) for verifying several tokens at once to actually be cheap.
+
+## Interactive demo
+
+```bash
+pip install streamlit
+streamlit run app.py
+```
+
+Type a prompt, pick a model pair and settings in the sidebar, hit Generate. Shows speculative and naive output side by side with real timing, tokens/sec, target-model forward-pass count, and acceptance rate — and an honest, dynamic note about why the speedup number will look bad on CPU and should look good on GPU.
+
+Defaults to the lighter `distilgpt2` → `gpt2` pairing (~200M params total) so it stays usable on free CPU-only hosting (e.g. Streamlit Community Cloud); the original `distilgpt2` → `gpt2-medium` pairing is available from the sidebar.
 
 ## Running it
 
