@@ -28,13 +28,13 @@ def load_models(draft_name: str, target_name: str, device: str):
     return tokenizer, draft, target
 
 
-st.title("⚡ Speculative Decoding, From Scratch")
+st.title("⚡ Speculative Decoding")
 st.caption(
     "A small **draft model** proposes several tokens at once; the big **target model** "
     "verifies them all in one forward pass and accepts or rejects each one with the exact "
     "probability that guarantees the output matches the target model alone. "
-    "[Correctness of this implementation is proven by an exact-match test, not just claimed.]"
-    "(https://github.com/Jeanstarjb/speculative-decoding#correctness-proven-not-assumed)"
+    "[Correctness of this implementation is proven by an exact-match test.]"
+    "(https://github.com/Jeanstarjb/speculative-decoding#correctness)"
 )
 
 device = "cuda" if torch.cuda.is_available() else "cpu"

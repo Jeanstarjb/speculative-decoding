@@ -2,6 +2,8 @@
 
 A from-scratch implementation of speculative decoding for LLM inference ([Leviathan et al., 2023](https://arxiv.org/abs/2211.17192); [Chen et al., 2023](https://arxiv.org/abs/2302.01318)), with a proof of correctness, an interactive demo, and a containerized API.
 
+**[Try the live demo →](https://speculative-decoding-u6wkd7vdc2ex4a9xwp3zby.streamlit.app/)**
+
 ## Overview
 
 Autoregressive language models generate one token per forward pass, which underuses accelerator hardware since each pass only predicts a single next token. Speculative decoding addresses this with two models:
@@ -64,6 +66,10 @@ python demo/speculative_decoding.py
 Default model pair: `distilgpt2` (draft) → `gpt2` (target), ~200M parameters total. A larger `distilgpt2` → `gpt2-medium` pairing is also available. Both use the same tokenizer, which speculative decoding requires.
 
 ### Interactive demo
+
+**Live: [speculative-decoding-u6wkd7vdc2ex4a9xwp3zby.streamlit.app](https://speculative-decoding-u6wkd7vdc2ex4a9xwp3zby.streamlit.app/)**
+
+Or run locally:
 
 ```bash
 pip install streamlit
