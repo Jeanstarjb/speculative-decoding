@@ -1,18 +1,19 @@
 # Build stage
-FROM python:3.10-slim-buster as builder
+FROM python:3.10-slim AS builder
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --user --no-cache-dir -r requirements.txt
 
 # Runtime stage
-FROM python:3.10-slim-buster
+FROM python:3.10-slim
 
 WORKDIR /app
 
 COPY --from=builder /root/.local /root/.local
-COPY . .
+COPY demo/ demo/
+COPY backend/ backend/
 
 ENV PATH=/root/.local/bin:$PATH
 

@@ -16,8 +16,9 @@ What's in `demo/` and `notebooks/` is a real rewrite of just the core algorithm:
 | [`demo/test_correctness.py`](demo/test_correctness.py) | Proof of correctness (see below) |
 | [`notebooks/speculative_decoding_kaggle.ipynb`](notebooks/speculative_decoding_kaggle.ipynb) | Same code, packaged to run standalone (Kaggle or local) — already contains real executed output |
 | [`app.py`](app.py) | Interactive Streamlit demo — type a prompt, see speculative vs. naive decoding side by side with real live stats |
+| [`backend/app/main.py`](backend/app/main.py) | A real FastAPI service wrapping the same core (see below) |
 
-Draft model: `distilgpt2`. Target model: `gpt2-medium`. Same tokenizer family, which speculative decoding requires.
+Draft/target model pairs used throughout: `distilgpt2` → `gpt2` (light, ~200M total, the default) or `distilgpt2` → `gpt2-medium` (~440M total). Same tokenizer family in both cases, which speculative decoding requires.
 
 ## Correctness, proven not assumed
 
@@ -65,6 +66,38 @@ Type a prompt, pick a model pair and settings in the sidebar, hit Generate. Show
 
 Defaults to the lighter `distilgpt2` → `gpt2` pairing (~200M params total) so it stays usable on free CPU-only hosting (e.g. Streamlit Community Cloud); the original `distilgpt2` → `gpt2-medium` pairing is available from the sidebar.
 
+## API (FastAPI + Docker)
+
+A real HTTP service wrapping the same proven core — no reimplementation, no Redis, no Kubernetes (deliberately: not needed to serve one model to one demo, would just be complexity for its own sake).
+
+```bash
+pip install -r backend/requirements.txt
+uvicorn backend.app.main:app --reload
+```
+
+or with Docker:
+
+```bash
+docker compose up --build
+```
+
+Both `GET /health` and `POST /generate` are real and tested (`backend/tests/test_api.py`, run against the actual app with `pytest`, not mocked). Verified with a live server and real `curl` requests, not just the test suite:
+
+```bash
+$ curl -X POST http://127.0.0.1:8000/generate -H "Content-Type: application/json" \
+    -d '{"prompt": "The best way to learn programming is", "max_new_tokens": 15, "compare_to_naive": true}'
+
+{"text":"The best way to learn programming is to study seven different languages and then practice
+your favorite patterns or eliminate certain ideas","elapsed_seconds":5.47,"tokens_per_second":2.74,
+"target_forward_passes":5,"acceptance_rate":0.77,"device":"cpu","naive_elapsed_seconds":1.85,
+"naive_text":"The best way to learn programming is to study it. You need to actively \"tree\" your
+learning through Innov","speedup":0.34}
+```
+
+That `speedup: 0.34` is the same honest CPU story as everywhere else in this README — real, unedited output, not cherry-picked.
+
+Interactive API docs (via FastAPI's auto-generated Swagger UI) are at `/docs` once the server is running.
+
 ## Running it
 
 ```bash
@@ -78,8 +111,8 @@ python demo/speculative_decoding.py   # full benchmark + sample generation
 
 Or open `notebooks/speculative_decoding_kaggle.ipynb` directly — it already contains real executed CPU output, and will run the larger GPU-scale benchmark automatically if you run it somewhere with CUDA available.
 
-## What's *not* real yet
+## What happened to the rest of the original scaffold
 
-The `backend/`, `frontend/`, `k8s/`, `benchmark/`, `configs/`, `clients/`, `load_test/`, and `spec_vocab/` directories are the original auto-generated scaffold. They're left in place for reference but are **not wired to the working implementation above** — the FastAPI service has no working `/generate` endpoint, several modules reference methods that don't exist elsewhere in the scaffold, and none of it has been run. If this gets built out further, the plan is to fold the proven `demo/speculative_decoding.py` core into a real, working version of that service rather than trust the scaffold's existing files.
+The original auto-generated scaffold also included `frontend/` (a React shell, superseded by the working Streamlit demo), `k8s/`, `benchmark/`, `configs/`, `clients/`, `load_test/`, and `spec_vocab/` directories, plus a top-level `tests/` that mocked out the very code it claimed to test. All of it was either non-functional (imports that didn't exist, a `run_benchmarks.py` that imported a `time` module it never actually imported) or made redundant by the real work above, so it's been removed rather than left to confuse anyone browsing the repo. `git log` has the full history if any of it is ever useful for reference.
 
-The "SpecVocab" dynamic-vocabulary-subset idea from the original scaffold (restricting the candidate vocabulary per step to cut softmax cost) is a separate, legitimate optimization on top of standard speculative decoding — not yet implemented here. What's implemented is correct, standard speculative decoding.
+Deliberately still not implemented: the "SpecVocab" dynamic-vocabulary-subset idea from the original repo name (restricting the candidate vocabulary per step to cut softmax cost). That's a separate, legitimate optimization on top of standard speculative decoding — not yet built. What's implemented and tested here is correct, standard speculative decoding.
