@@ -1,6 +1,6 @@
 # Speculative Decoding
 
-A from-scratch implementation of speculative decoding for LLM inference ([Leviathan et al., 2023](https://arxiv.org/abs/2211.17192); [Chen et al., 2023](https://arxiv.org/abs/2302.01318)), with a proof of correctness, an interactive demo, and a containerized API.
+A from-scratch implementation of speculative decoding for LLM inference ([Leviathan et al., 2023](https://arxiv.org/abs/2211.17192); [Chen et al., 2023](https://arxiv.org/abs/2302.01318)), with a proof of correctness, an interactive demo, and a containerized API.........................
 
 **[Try the live demo →](https://speculative-decoding-u6wkd7vdc2ex4a9xwp3zby.streamlit.app/)**
 
